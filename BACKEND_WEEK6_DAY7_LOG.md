@@ -1,7 +1,7 @@
-# Backend Week 1, Day 7 — Buffer / Review
+# Backend Week 6, Day 7 — Buffer / Review
 
-**Goal:** No new features — audit the full Week 1 backend (Days 1-6) for bugs
-and gaps before moving into Week 2.
+**Goal:** No new features — audit the full Week 6 backend (Days 1-6) for bugs
+and gaps before moving into Week 7.
 
 ## What was audited
 - `routes/contact.js` — validation logic, error handling flow
@@ -39,4 +39,4 @@ every other client-input mistake is already handled in `routes/contact.js`.
 
 ## Not touched
 No new validation rules, routes, or features were added — Day 7 is cleanup
-only. Week 2 (Nodemailer + real front-end integration) starts fresh next.
+only. Week 6 (Nodemailer + real front-end integration) starts fresh next.

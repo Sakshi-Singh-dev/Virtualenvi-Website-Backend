@@ -1,7 +1,7 @@
-# Week 2, Day 7 — Buffer / Catch-Up
+#Day 7 — Buffer / Catch-Up
 
-**Goal:** No new features — audit the full Week 2 build (Nodemailer + real
-front-end integration, Days 1-6) for bugs and gaps before Week 3, and confirm
+**Goal:** No new features — audit the full build (Nodemailer + real
+front-end integration, Days 1-6) for bugs and gaps before Week 7, and confirm
 what still needs a manual pass with real credentials.
 
 ## What was audited
@@ -9,7 +9,7 @@ what still needs a manual pass with real credentials.
 - `utils/mailer.js` — Nodemailer wiring, failure isolation from the DB save
 - `models/Contact.js` — schema limits vs. route-level validation limits
 - `middleware/errorHandler.js`, `middleware/requestLogger.js` — unchanged
-  since Week 1, re-checked for drift
+  since Week 5, re-checked for drift
 - `script.js` (`submitForm()`) — real `fetch()` call, `AbortController`
   timeout, success/error UI state handling
 - `contact.html` — form field `name` attributes, success/error message
@@ -42,7 +42,7 @@ and message on the first run:
 | No Content-Type / raw string body | 400 | ✅ |
 | Unknown route | 404 | ✅ |
 
-No failures — the Day 4 validation logic and the Week 1 malformed-JSON fix
+No failures — the Day 4 validation logic and the Week 5 malformed-JSON fix
 both hold up under this batch. Keep `edge_case_test.js` around; rerun it
 with `node edge_case_test.js` any time the route changes.
 
@@ -77,8 +77,8 @@ credentials — done and confirmed:
 2. **Day 6 — real-world edge cases.** Server-down, throttled-connection,
    and real-device scenarios tested against the live form.
 
-Week 2 (Nodemailer + real front-end integration) is fully closed.
+Week 6 (Nodemailer + real front-end integration) is fully closed.
 
 ## Not touched
 No new routes, fields, or UI states were added — Day 7 is cleanup and
-verification only. Week 3 starts fresh next.
+verification only. Week 7 starts fresh next.

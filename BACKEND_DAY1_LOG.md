@@ -1,4 +1,4 @@
-# Backend Week 1, Day 1 — Project Setup
+# Backend Week 6, Day 1 — Project Setup
 
 **Goal:** Set up the Express server skeleton, folder structure, and database
 connection scaffolding (not yet connected to a live database — that's Day 2).
@@ -42,13 +42,13 @@ virtualenvi-backend/
 - Server won't silently start if MongoDB connection fails — it logs the error
   and exits, so a broken DB connection is obvious immediately
 
-## Known gap to fix before Week 2's front-end integration
+## Known gap to fix before Week 6's front-end integration
 Your `contact.html` form inputs currently have no `name` attribute (only
 `placeholder`) — e.g. `<input type="text" placeholder="Full Name" required />`.
 The backend expects `req.body.name`, `req.body.email`, etc., so you'll need to
 add `name="name"`, `name="email"`, `name="subject"`, `name="message"` to the
 four inputs before wiring up the real `fetch()` call. Flagging now so it's not
-a surprise in Week 2 Day 3.
+a surprise in Week 6 Day 3.
 
 ## Not done yet (upcoming days)
 - Day 2: Live MongoDB Atlas connection + testing the schema actually saves data
