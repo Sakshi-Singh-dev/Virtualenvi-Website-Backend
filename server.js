@@ -11,7 +11,7 @@ const logger = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
+app.set('trust proxy', 1);
 // ── CORS — locked down to only the actual Virtualenvi website ──
 // Previously cors() with no options allowed requests from ANY website,
 // meaning anyone could embed a form on their own page that silently
