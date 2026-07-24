@@ -1,33 +1,69 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns').promises;
 const logger = require('./logger');
 
 let transporter = null;
+let resolvedIPv4Host = null;
 
-// Lazily create the transporter once, on first use, rather than at import
-// time — this way a missing EMAIL_USER/EMAIL_PASS doesn't crash the whole
-// server on startup, it just means emails silently won't send (logged below).
-function getTransporter() {
+// Every previous attempt to fix the ENETUNREACH/timeout issue relied on
+// Node choosing the right address itself (DNS ordering, disabling
+// dual-stack racing) — and Render's environment kept ignoring those
+// settings for reasons that were hard to pin down. This is the definitive
+// fix: we resolve smtp.gmail.com's actual IPv4 address ourselves using
+// dns.resolve4() (which can ONLY return IPv4 addresses — there is no
+// IPv6 to accidentally pick), then connect directly to that literal IP.
+// A literal IP has no DNS lookup step at connection time, so there is
+// nothing left for Node to get wrong.
+async function getGmailIPv4Host() {
+  if (resolvedIPv4Host) return resolvedIPv4Host;
+
+  try {
+    const addresses = await dns.resolve4('smtp.gmail.com');
+    resolvedIPv4Host = addresses[0];
+    logger.info(`Resolved smtp.gmail.com to IPv4 address ${resolvedIPv4Host}`);
+    return resolvedIPv4Host;
+  } catch (err) {
+    logger.warn('Could not resolve smtp.gmail.com to an IPv4 address, falling back to hostname');
+    return null;
+  }
+}
+
+async function getTransporter() {
   if (transporter) return transporter;
 
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     return null;
   }
 
-  transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    // Render's network has intermittent/broken outbound IPv6 support.
-    // dns.setDefaultResultOrder('ipv4first') in server.js reduces this,
-    // but doesn't fully eliminate it (confirmed: some requests still hit
-    // ENETUNREACH on an IPv6 address for smtp.gmail.com even with that
-    // set). Forcing `family: 4` here makes the SMTP socket itself refuse
-    // to even attempt an IPv6 connection, which is a hard guarantee
-    // rather than just a DNS-ordering preference.
-    family: 4,
-  });
+  const ipv4Host = await getGmailIPv4Host();
+
+  if (ipv4Host) {
+    // Connect to the literal resolved IP. `servername` is required so TLS
+    // certificate validation still checks against "smtp.gmail.com" (the
+    // name on Gmail's certificate) instead of the raw IP, which would
+    // otherwise fail certificate hostname verification.
+    transporter = nodemailer.createTransport({
+      host: ipv4Host,
+      port: 465,
+      secure: true,
+      tls: { servername: 'smtp.gmail.com' },
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+  } else {
+    // Fallback: if we couldn't resolve an IPv4 address for some reason,
+    // fall back to the normal hostname-based config rather than not
+    // sending email at all.
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+  }
 
   return transporter;
 }
@@ -44,15 +80,8 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-/**
- * Sends a notification email to the site owner when a new contact form
- * submission comes in. Failures here are logged but never thrown — a
- * broken email setup should never cause the contact form submission
- * itself to fail, since the data is already safely saved in MongoDB
- * regardless.
- */
 async function sendContactNotification(contact) {
-  const t = getTransporter();
+  const t = await getTransporter();
 
   if (!t) {
     logger.warn('Notification email not sent — EMAIL_USER/EMAIL_PASS not set in .env');
@@ -93,21 +122,12 @@ async function sendContactNotification(contact) {
     });
     logger.info(`Notification email sent for submission ${contact._id}`);
   } catch (err) {
-    // Log and swallow — the form submission already succeeded and was
-    // saved to the database, so a failed email shouldn't surface as an
-    // error to the person who submitted the form.
     logger.error('Failed to send notification email', err);
   }
 }
 
-/**
- * Sends a confirmation email back to the person who submitted the form,
- * letting them know their message was received. Same fire-and-forget
- * failure handling as the notification email — this is a nice-to-have,
- * not something that should ever block or fail the actual submission.
- */
 async function sendConfirmationEmail(contact) {
-  const t = getTransporter();
+  const t = await getTransporter();
 
   if (!t) {
     logger.warn('Confirmation email not sent — EMAIL_USER/EMAIL_PASS not set in .env');
