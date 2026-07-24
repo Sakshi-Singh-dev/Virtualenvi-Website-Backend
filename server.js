@@ -1,3 +1,4 @@
+require('dns').setDefaultResultOrder('ipv4first');
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -24,8 +25,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (e.g. Thunder Client, curl, server-to-server)
-    // — these don't send an Origin header at all, so they're not a CORS risk.
+    
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
