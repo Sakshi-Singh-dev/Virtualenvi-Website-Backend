@@ -1,7 +1,11 @@
 const nodemailer = require('nodemailer');
 const logger = require('./logger');
+
 let transporter = null;
 
+// Lazily create the transporter once, on first use, rather than at import
+// time — this way a missing EMAIL_USER/EMAIL_PASS doesn't crash the whole
+// server on startup, it just means emails silently won't send (logged below).
 function getTransporter() {
   if (transporter) return transporter;
 
@@ -15,11 +19,22 @@ function getTransporter() {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
+    // Render's network has intermittent/broken outbound IPv6 support.
+    // dns.setDefaultResultOrder('ipv4first') in server.js reduces this,
+    // but doesn't fully eliminate it (confirmed: some requests still hit
+    // ENETUNREACH on an IPv6 address for smtp.gmail.com even with that
+    // set). Forcing `family: 4` here makes the SMTP socket itself refuse
+    // to even attempt an IPv6 connection, which is a hard guarantee
+    // rather than just a DNS-ordering preference.
+    family: 4,
   });
 
   return transporter;
 }
 
+// User-submitted text is going into an HTML email body, so it needs to be
+// escaped — otherwise someone could submit a "message" containing HTML/JS
+// and have it render inside the email itself instead of showing as plain text.
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -29,6 +44,13 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+/**
+ * Sends a notification email to the site owner when a new contact form
+ * submission comes in. Failures here are logged but never thrown — a
+ * broken email setup should never cause the contact form submission
+ * itself to fail, since the data is already safely saved in MongoDB
+ * regardless.
+ */
 async function sendContactNotification(contact) {
   const t = getTransporter();
 
