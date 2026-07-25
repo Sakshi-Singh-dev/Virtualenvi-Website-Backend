@@ -1,71 +1,52 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns').promises;
 const logger = require('./logger');
 
-let transporter = null;
-let resolvedIPv4Host = null;
+// Switched from Nodemailer/SMTP to Resend's HTTP API after extensive
+// debugging (IPv6 DNS ordering, disabling dual-stack racing, connecting
+// to a literal resolved IPv4 address) all failed the same way: the
+// connection either got an unreachable IPv6 address or hung until
+// timeout on a *correctly* resolved IPv4 address. That pattern points to
+// Render's free tier blocking outbound SMTP traffic entirely (a common
+// anti-spam restriction on free hosting tiers), not a DNS/address
+// problem at all. Resend sends email over a normal HTTPS POST request
+// (port 443), which is never blocked, so this sidesteps the issue
+// completely instead of continuing to fight it at the network layer.
+const RESEND_API_URL = 'https://api.resend.com/emails';
 
-// Every previous attempt to fix the ENETUNREACH/timeout issue relied on
-// Node choosing the right address itself (DNS ordering, disabling
-// dual-stack racing) — and Render's environment kept ignoring those
-// settings for reasons that were hard to pin down. This is the definitive
-// fix: we resolve smtp.gmail.com's actual IPv4 address ourselves using
-// dns.resolve4() (which can ONLY return IPv4 addresses — there is no
-// IPv6 to accidentally pick), then connect directly to that literal IP.
-// A literal IP has no DNS lookup step at connection time, so there is
-// nothing left for Node to get wrong.
-async function getGmailIPv4Host() {
-  if (resolvedIPv4Host) return resolvedIPv4Host;
-
-  try {
-    const addresses = await dns.resolve4('smtp.gmail.com');
-    resolvedIPv4Host = addresses[0];
-    logger.info(`Resolved smtp.gmail.com to IPv4 address ${resolvedIPv4Host}`);
-    return resolvedIPv4Host;
-  } catch (err) {
-    logger.warn('Could not resolve smtp.gmail.com to an IPv4 address, falling back to hostname');
-    return null;
-  }
-}
-
-async function getTransporter() {
-  if (transporter) return transporter;
-
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+async function sendViaResend({ to, subject, html, text, replyTo }) {
+  if (!process.env.RESEND_API_KEY) {
+    logger.warn('Email not sent — RESEND_API_KEY not set in .env');
     return null;
   }
 
-  const ipv4Host = await getGmailIPv4Host();
+  const body = {
+    // Resend's shared testing domain — works immediately with no setup,
+    // but can only deliver to the email address the Resend account was
+    // signed up with. Sending from your own verified domain (e.g.
+    // notifications@virtualenvi.com) removes that limit, but requires
+    // owning and verifying that domain in the Resend dashboard first.
+    from: 'Virtualenvi Website <onboarding@resend.dev>',
+    to,
+    subject,
+    html,
+    text,
+  };
+  if (replyTo) body.reply_to = replyTo;
 
-  if (ipv4Host) {
-    // Connect to the literal resolved IP. `servername` is required so TLS
-    // certificate validation still checks against "smtp.gmail.com" (the
-    // name on Gmail's certificate) instead of the raw IP, which would
-    // otherwise fail certificate hostname verification.
-    transporter = nodemailer.createTransport({
-      host: ipv4Host,
-      port: 465,
-      secure: true,
-      tls: { servername: 'smtp.gmail.com' },
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-  } else {
-    // Fallback: if we couldn't resolve an IPv4 address for some reason,
-    // fall back to the normal hostname-based config rather than not
-    // sending email at all.
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+  const response = await fetch(RESEND_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Resend API error (${response.status}): ${errorBody}`);
   }
 
-  return transporter;
+  return response.json();
 }
 
 // User-submitted text is going into an HTML email body, so it needs to be
@@ -80,14 +61,13 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+/**
+ * Sends a notification email to the site owner when a new contact form
+ * submission comes in. Failures here are logged but never thrown — a
+ * broken email setup should never cause the contact form submission
+ * itself to fail, since the data is already saved in MongoDB regardless.
+ */
 async function sendContactNotification(contact) {
-  const t = await getTransporter();
-
-  if (!t) {
-    logger.warn('Notification email not sent — EMAIL_USER/EMAIL_PASS not set in .env');
-    return;
-  }
-
   const notifyTo = process.env.NOTIFY_EMAIL || process.env.EMAIL_USER;
   const safeName = escapeHtml(contact.name);
   const safeEmail = escapeHtml(contact.email);
@@ -95,8 +75,7 @@ async function sendContactNotification(contact) {
   const safeMessage = escapeHtml(contact.message).replace(/\n/g, '<br>');
 
   try {
-    await t.sendMail({
-      from: `"Virtualenvi Website" <${process.env.EMAIL_USER}>`,
+    const result = await sendViaResend({
       to: notifyTo,
       replyTo: contact.email,
       subject: `New contact form submission: ${contact.subject || '(no subject)'}`,
@@ -120,25 +99,26 @@ async function sendContactNotification(contact) {
         </div>
       `,
     });
-    logger.info(`Notification email sent for submission ${contact._id}`);
+    if (result) {
+      logger.info(`Notification email sent for submission ${contact._id}`);
+    }
   } catch (err) {
     logger.error('Failed to send notification email', err);
   }
 }
 
+/**
+ * Sends a confirmation email back to the person who submitted the form.
+ * NOTE: on Resend's free/unverified-domain tier, this can only actually
+ * be delivered if `contact.email` matches the Resend account's own
+ * signup email — for any other address it will fail silently here
+ * (logged, not surfaced to the user) until a real domain is verified.
+ */
 async function sendConfirmationEmail(contact) {
-  const t = await getTransporter();
-
-  if (!t) {
-    logger.warn('Confirmation email not sent — EMAIL_USER/EMAIL_PASS not set in .env');
-    return;
-  }
-
   const safeName = escapeHtml(contact.name);
 
   try {
-    await t.sendMail({
-      from: `"Virtualenvi" <${process.env.EMAIL_USER}>`,
+    const result = await sendViaResend({
       to: contact.email,
       subject: 'We received your message — Virtualenvi',
       text: `Hi ${contact.name},\n\nThanks for reaching out to Virtualenvi. We've received your message and will get back to you soon.\n\n— The Virtualenvi Team`,
@@ -150,9 +130,11 @@ async function sendConfirmationEmail(contact) {
         </div>
       `,
     });
-    logger.info(`Confirmation email sent to ${contact.email} for submission ${contact._id}`);
+    if (result) {
+      logger.info(`Confirmation email sent to ${contact.email} for submission ${contact._id}`);
+    }
   } catch (err) {
-    logger.error('Failed to send confirmation email', err);
+    logger.error('Failed to send confirmation email (expected for non-account-owner addresses on Resend free tier)', err);
   }
 }
 
