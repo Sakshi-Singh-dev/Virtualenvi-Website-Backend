@@ -19,11 +19,7 @@ async function sendViaResend({ to, subject, html, text, replyTo }) {
   }
 
   const body = {
-    // Resend's shared testing domain — works immediately with no setup,
-    // but can only deliver to the email address the Resend account was
-    // signed up with. Sending from your own verified domain (e.g.
-    // notifications@virtualenvi.com) removes that limit, but requires
-    // owning and verifying that domain in the Resend dashboard first.
+
     from: 'Virtualenvi Website <onboarding@resend.dev>',
     to,
     subject,
