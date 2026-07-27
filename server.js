@@ -1,20 +1,3 @@
-// These two lines MUST run before anything else touches the network.
-//
-// 1. Prefer IPv4 in DNS lookups (reduces but doesn't fully eliminate the
-//    issue on its own — Node's "Happy Eyeballs" behavior below can still
-//    override this).
-// 2. Disable Node's automatic dual-stack connection racing entirely. By
-//    default, Node tries IPv4 AND IPv6 in parallel for any connection and
-//    uses whichever responds first. Render's network allows outbound IPv6
-//    routing at the DNS/routing level but silently drops the actual
-//    packets, so the IPv6 attempt hangs instead of failing fast — and the
-//    whole connection can get stuck waiting on it for up to Nodemailer's
-//    2-minute default timeout. Disabling this makes Node try addresses
-//    one at a time, in the ipv4-first order set above, with no race to
-//    get stuck in.
-require('dns').setDefaultResultOrder('ipv4first');
-require('net').setDefaultAutoSelectFamily(false);
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
