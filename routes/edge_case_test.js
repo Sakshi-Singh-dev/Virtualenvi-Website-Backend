@@ -1,15 +1,8 @@
-// Day 7 buffer — edge case verification harness.
-// Mounts the REAL contact router with a mocked Contact.create (no live
-// MongoDB needed) so we can fire a batch of edge-case requests and confirm
-// the Day 4 validation logic behaves as expected, without needing a live
-// Atlas cluster or email credentials in this environment.
 
 const express = require('express');
 const request = require('supertest');
 const Contact = require('./models/Contact');
 
-// Mock the DB layer only — everything else (validation, error handler,
-// mailer no-op path) runs for real.
 Contact.create = async (data) => ({ _id: 'mock_id_123', ...data });
 
 const contactRoutes = require('./routes/contact');

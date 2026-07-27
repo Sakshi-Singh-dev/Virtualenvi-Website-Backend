@@ -11,12 +11,6 @@ const logger = require('./utils/logger');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Render sits the app behind a reverse proxy, so the real visitor IP
-// arrives via the X-Forwarded-For header rather than the raw socket
-// connection. Without this, express-rate-limit can't reliably tell
-// visitors apart by IP, and Express throws a validation warning on every
-// request. `1` means "trust exactly one hop" — appropriate for Render's
-// setup, safer than trusting an arbitrary number of proxies.
 app.set('trust proxy', 1);
 
 // ── CORS — locked down to only the actual Virtualenvi website ──

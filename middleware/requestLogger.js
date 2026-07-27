@@ -1,8 +1,5 @@
 const logger = require('../utils/logger');
 
-// Logs every incoming request once it finishes, with method, path,
-// status code, and how long it took — makes it possible to trace what
-// happened around any given error just by scrolling the log file.
 function requestLogger(req, res, next) {
   const start = Date.now();
 

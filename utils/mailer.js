@@ -1,15 +1,5 @@
 const logger = require('./logger');
 
-// Switched from Nodemailer/SMTP to Resend's HTTP API after extensive
-// debugging (IPv6 DNS ordering, disabling dual-stack racing, connecting
-// to a literal resolved IPv4 address) all failed the same way: the
-// connection either got an unreachable IPv6 address or hung until
-// timeout on a *correctly* resolved IPv4 address. That pattern points to
-// Render's free tier blocking outbound SMTP traffic entirely (a common
-// anti-spam restriction on free hosting tiers), not a DNS/address
-// problem at all. Resend sends email over a normal HTTPS POST request
-// (port 443), which is never blocked, so this sidesteps the issue
-// completely instead of continuing to fight it at the network layer.
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
 async function sendViaResend({ to, subject, html, text, replyTo }) {
@@ -45,9 +35,6 @@ async function sendViaResend({ to, subject, html, text, replyTo }) {
   return response.json();
 }
 
-// User-submitted text is going into an HTML email body, so it needs to be
-// escaped — otherwise someone could submit a "message" containing HTML/JS
-// and have it render inside the email itself instead of showing as plain text.
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -57,12 +44,7 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-/**
- * Sends a notification email to the site owner when a new contact form
- * submission comes in. Failures here are logged but never thrown — a
- * broken email setup should never cause the contact form submission
- * itself to fail, since the data is already saved in MongoDB regardless.
- */
+
 async function sendContactNotification(contact) {
   const notifyTo = process.env.NOTIFY_EMAIL || process.env.EMAIL_USER;
   const safeName = escapeHtml(contact.name);
@@ -103,13 +85,7 @@ async function sendContactNotification(contact) {
   }
 }
 
-/**
- * Sends a confirmation email back to the person who submitted the form.
- * NOTE: on Resend's free/unverified-domain tier, this can only actually
- * be delivered if `contact.email` matches the Resend account's own
- * signup email — for any other address it will fail silently here
- * (logged, not surfaced to the user) until a real domain is verified.
- */
+
 async function sendConfirmationEmail(contact) {
   const safeName = escapeHtml(contact.name);
 

@@ -14,8 +14,6 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Request body is missing or invalid.' });
     }
 
-    // Trim first so whitespace-only values ("   ") are treated as empty,
-    // not as valid non-empty strings.
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
     const subject = typeof req.body.subject === 'string' ? req.body.subject.trim() : '';
@@ -47,9 +45,6 @@ router.post('/', async (req, res, next) => {
 
     const contact = await Contact.create({ name, email, subject, message });
 
-    // Fire-and-forget: don't await these in a way that could delay or fail
-    // the response to the user. Emails are a nice-to-have; the database
-    // save is the source of truth.
     sendContactNotification(contact);
     sendConfirmationEmail(contact);
 
